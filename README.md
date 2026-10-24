@@ -1,8 +1,22 @@
 # sitl-patrol-mission
 
-Indoor patrol scheduling on ROS 2 Humble. A behavior tree drives a TurtleBot3 through three poses with Nav2, and the application layer owns the task ingress, retries, lidar freshness, and stop.
+A handwritten ROS 2 Humble learning project: schedule an indoor patrol in simulation, and keep the application layer separate from the navigator.
 
-ROS 2 Humble 仿真里的室内巡检调度。行为树按 A→B→C 调用现成 Nav2。应用层负责任务入口、超时重试、雷达新鲜度和停车。导航和车体模型都用现成的，不自研规划，也不做视觉。
+这是我手写来学 ROS 2 应用层的项目。导航和车体用现成的 Nav2 与 TurtleBot3，自己写的是任务怎么进来、怎么按点执行、失败了怎么停。不做规划，也不做视觉。
+
+## 目的
+
+把一次室内巡检从「在 RViz 里点目标」收成一条能复现的任务：外部下发 `start`，行为树走完三个点，超时会重试，雷达检查失败会停车，过程能用测试和记录对上。
+
+## 里面有什么
+
+- **任务编排。** `patrol.xml` 里 A→B→C。每拍先看 `/scan`，每个点最多 3 次（含第一次）。
+- **Nav2 接口。** `NavAdapter` 发 `/navigate_to_pose`，处理句柄还没回来时的取消。
+- **停车。** 车只听 `/cmd_vel_safe`。失败或取消后锁存零速度，节点不退出。
+- **任务入口。** MQTT `sitl/patrol/task`，或话题 `/patrol_task`。状态写到 `/patrol_status`。
+- **仿真。** Gazebo Classic 里的 TurtleBot3 waffle，AMCL 自己设初始位姿。
+- **对照实验。** 雷达延迟中继不改 stamp；里程 TF 可以单独停发，用来和雷达故障分开看。
+- **验证。** 不启动仿真的 GTest；一次成功、一次故障的运行记录在 [docs/measurements.md](docs/measurements.md)。
 
 ## 状态
 

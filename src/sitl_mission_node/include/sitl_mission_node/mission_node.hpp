@@ -66,6 +66,8 @@ private:
 
   Phase phase_{Phase::WaitTask};
   bool auto_start_{true};
+  int patrol_loops_{1};
+  int laps_finished_{0};
   bool external_task_{false};
   bool goal_metric_logged_{false};
   bool arm_announced_{false};

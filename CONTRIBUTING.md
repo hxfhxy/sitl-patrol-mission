@@ -18,7 +18,7 @@ GTest 不启动 Gazebo。改了适配器或行为树之后，至少跑上面这�
 - 雷达延迟和 `odom_tf_gate` 的 `stall` 分成两次运行。
 - `scan_delay_node` 不改 `LaserScan` 的 stamp、frame 和 payload。
 - `stall` 只停止 `odom → base_footprint`。零速度由 `EStop` 发到 `/cmd_vel_safe`。
-- 树成功才 `rclcpp::shutdown()`。失败和取消留下节点，让零速度定时器继续跑。
+- 只有设定的圈数走完才 `rclcpp::shutdown()`。默认 `patrol_loops` 是 1。失败和取消留下节点，让零速度定时器继续跑。成功后的下一圈不要 `haltTree()`，避免把已经完成的点再锁存成零速度。
 - `scripts/*.sh` 在 source ROS 环境时不要开 `set -u`。Humble 的 `setup.bash` 会读到未设置的变量。
 
 ## 许可

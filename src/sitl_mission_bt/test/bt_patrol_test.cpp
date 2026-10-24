@@ -105,6 +105,73 @@ TEST_F(BtPatrolTest, SuccessCompletesOneGoal)
   EXPECT_EQ(nav.cancels, 0);
 }
 
+TEST_F(BtPatrolTest, SuccessStartsTheNextLapWithoutCancel)
+{
+  FakeNav nav;
+  nav.mode = FakeNav::Mode::ImmediateSuccess;
+  FakeHealth health;
+  auto tree = make_tree(kOnePoint, nav, health);
+
+  auto finish_one = [&]() {
+    BT::NodeStatus status = BT::NodeStatus::IDLE;
+    for (int i = 0; i < 6; ++i) {
+      status = tree.tickRoot();
+      if (status == BT::NodeStatus::SUCCESS) {
+        return status;
+      }
+    }
+    return status;
+  };
+
+  EXPECT_EQ(finish_one(), BT::NodeStatus::SUCCESS);
+  EXPECT_EQ(nav.sends, 1);
+  EXPECT_EQ(finish_one(), BT::NodeStatus::SUCCESS);
+  EXPECT_EQ(nav.sends, 2);
+  EXPECT_EQ(nav.cancels, 0);
+}
+
+TEST_F(BtPatrolTest, SequenceRestartsFromTheFirstPoint)
+{
+  const char * xml = R"(
+<root main_tree_to_execute="MainTree">
+  <BehaviorTree ID="MainTree">
+    <ReactiveSequence>
+      <IsScanHealthy max_age_sec="1.0"/>
+      <Sequence>
+        <RetryUntilSuccessful num_attempts="3">
+          <NavigateTo name="wp_A" x="1.0" y="0.0" yaw="0.0" timeout_sec="1.0"/>
+        </RetryUntilSuccessful>
+        <RetryUntilSuccessful num_attempts="3">
+          <NavigateTo name="wp_B" x="1.5" y="1.5" yaw="1.57" timeout_sec="1.0"/>
+        </RetryUntilSuccessful>
+      </Sequence>
+    </ReactiveSequence>
+  </BehaviorTree>
+</root>
+)";
+  FakeNav nav;
+  nav.mode = FakeNav::Mode::ImmediateSuccess;
+  FakeHealth health;
+  auto tree = make_tree(xml, nav, health);
+
+  auto finish_one = [&]() {
+    BT::NodeStatus status = BT::NodeStatus::IDLE;
+    for (int i = 0; i < 8; ++i) {
+      status = tree.tickRoot();
+      if (status == BT::NodeStatus::SUCCESS) {
+        return status;
+      }
+    }
+    return status;
+  };
+
+  EXPECT_EQ(finish_one(), BT::NodeStatus::SUCCESS);
+  EXPECT_EQ(nav.sends, 2);
+  EXPECT_EQ(finish_one(), BT::NodeStatus::SUCCESS);
+  EXPECT_EQ(nav.sends, 4);
+  EXPECT_EQ(nav.cancels, 0);
+}
+
 TEST_F(BtPatrolTest, TimeoutRetriesThenFails)
 {
   FakeNav nav;

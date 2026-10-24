@@ -1,6 +1,6 @@
 # 接口
 
-路点只以 `src/sitl_mission_bt/behavior_trees/patrol.xml` 为准。`auto_start` 默认 true，`scripts/start.sh` 不用另发任务。
+路点只以 `src/sitl_mission_bt/behavior_trees/patrol.xml` 为准。`auto_start` 默认 true，`scripts/start.sh` 不用另发任务。`patrol_loops` 默认 1。`0` 表示每一圈成功后从 A 再走，直到取消或故障。负数会改成 1。
 
 ## 状态字
 
@@ -11,7 +11,8 @@
 | `accepted` | 收到 start，还在等 Nav2 |
 | `running` | 开始 tick |
 | `goal_sent <秒>` | 仅外部任务。任务到达到 Nav2 接受第一个 Goal，三位小数 |
-| `succeeded` | 三点完成，随后进程退出 |
+| `lap <n>` | 第 n 圈走完，还要继续。n 从 1 起 |
+| `succeeded` | 设定圈数走完，随后进程退出。默认就是一圈 |
 | `canceled` | 用户取消，进程仍在 |
 | `fault <reason>` | 树失败，或 60 s 墙钟内 Nav2 没 Active |
 
@@ -31,7 +32,7 @@
 
 雷达原因先写上。`onHalted` 只有黑板还空时才写 `canceled`，避免把关雷达记成用户取消。用户取消由 `mission_node` 直接发 `canceled`，不读黑板。
 
-深度 1 加上成功后退出：录 `succeeded` 的订阅者要在进程退出前已经连上。
+深度 1 加上成功后退出：录 `succeeded` 的订阅者要在进程退出前已经连上。`patrol_loops:=0` 不会发 `succeeded`。下一圈开始前会清掉黑板里上一圈重试留下的 `fault_reason`。指标一仍然只记这次任务的第一个 Goal。
 
 ## 任务入口
 

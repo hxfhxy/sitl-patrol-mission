@@ -57,6 +57,7 @@ def generate_launch_description():
         parameters=[{
             'use_sim_time': True,
             'auto_start': ParameterValue(LaunchConfiguration('auto_start'), value_type=bool),
+            'patrol_loops': ParameterValue(LaunchConfiguration('patrol_loops'), value_type=int),
             'mqtt_enable': ParameterValue(LaunchConfiguration('mqtt_enable'), value_type=bool),
             'mqtt_host': LaunchConfiguration('mqtt_host'),
             'mqtt_port': ParameterValue(LaunchConfiguration('mqtt_port'), value_type=int),
@@ -67,6 +68,7 @@ def generate_launch_description():
 
     return LaunchDescription([
         DeclareLaunchArgument('auto_start', default_value='true'),
+        DeclareLaunchArgument('patrol_loops', default_value='1'),
         DeclareLaunchArgument('mqtt_enable', default_value='false'),
         DeclareLaunchArgument('mqtt_host', default_value='127.0.0.1'),
         DeclareLaunchArgument('mqtt_port', default_value='1883'),

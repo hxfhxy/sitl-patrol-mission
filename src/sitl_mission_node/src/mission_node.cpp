@@ -15,6 +15,11 @@ namespace sitl_mission_node {
 MissionNode::MissionNode() : Node("mission_node")
 {
   auto_start_ = declare_parameter<bool>("auto_start", true);
+  patrol_loops_ = declare_parameter<int>("patrol_loops", 1);
+  if (patrol_loops_ < 0) {
+    RCLCPP_WARN(get_logger(), "patrol_loops=%d 无效，改用 1。", patrol_loops_);
+    patrol_loops_ = 1;
+  }
   const bool mqtt_enable = declare_parameter<bool>("mqtt_enable", false);
   const std::string mqtt_host = declare_parameter<std::string>("mqtt_host", "127.0.0.1");
   const int mqtt_port = declare_parameter<int>("mqtt_port", 1883);
@@ -62,6 +67,12 @@ MissionNode::MissionNode() : Node("mission_node")
       mqtt_host.c_str(), mqtt_port, mqtt_topic.c_str(), mqtt_status_topic.c_str());
   } else {
     RCLCPP_INFO(get_logger(), "任务入口: /patrol_task（std_msgs/String, start|cancel）。MQTT 未启用。");
+  }
+
+  if (patrol_loops_ == 0) {
+    RCLCPP_INFO(get_logger(), "patrol_loops=0，一圈成功后继续下一圈，直到取消或故障。");
+  } else {
+    RCLCPP_INFO(get_logger(), "patrol_loops=%d，走完后退出。", patrol_loops_);
   }
 
   if (auto_start_) {
@@ -126,6 +137,7 @@ void MissionNode::request_start(bool external)
   lifecycle_future_.reset();
   external_task_ = external;
   goal_metric_logged_ = false;
+  laps_finished_ = 0;
   if (external) {
     task_arrival_ = now();
   }
@@ -222,9 +234,24 @@ void MissionNode::tick_tree()
   }
   const BT::NodeStatus status = tree_.tickRoot();
   if (status == BT::NodeStatus::SUCCESS) {
+    laps_finished_ += 1;
+    if (const auto blackboard = tree_.rootBlackboard()) {
+      blackboard->set("fault_reason", std::string());
+    }
+    // tickRoot 在 SUCCESS 后把根设回 IDLE，下一拍会从 A 再走。不要 haltTree：
+    // 点已经成功，再 halt 可能进 onHalted，把零速度锁存到下一圈。
+    if (!patrol_laps_complete(patrol_loops_, laps_finished_)) {
+      publish_status("lap " + std::to_string(laps_finished_));
+      RCLCPP_INFO(get_logger(), "第 %d 圈完成，继续下一圈。", laps_finished_);
+      return;
+    }
     phase_ = Phase::Done;
     bt_timer_->cancel();
-    RCLCPP_INFO(get_logger(), "行为树返回 SUCCESS，三点巡检完成。");
+    if (patrol_loops_ == 1) {
+      RCLCPP_INFO(get_logger(), "行为树返回 SUCCESS，三点巡检完成。");
+    } else {
+      RCLCPP_INFO(get_logger(), "第 %d 圈完成，巡检结束。", laps_finished_);
+    }
     publish_status("succeeded");
     rclcpp::sleep_for(std::chrono::milliseconds(100));
     rclcpp::shutdown();

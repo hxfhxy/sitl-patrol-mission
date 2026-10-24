@@ -8,9 +8,11 @@ A handwritten ROS 2 Humble learning project: schedule an indoor patrol in simula
 
 把一次室内巡检从「在 RViz 里点目标」收成一条能复现的任务：外部下发 `start`，行为树走完三个点，超时会重试，雷达检查失败会停车，过程能用测试和记录对上。
 
+![Gazebo 里的 TurtleBot3，RViz 里是同一圈的代价地图](docs/patrol.png)
+
 ## 里面有什么
 
-- **任务编排。** `patrol.xml` 里 A→B→C。每拍先看 `/scan`，每个点最多 3 次（含第一次）。
+- **任务编排。** `patrol.xml` 里 A→B→C。每拍先看 `/scan`，每个点最多 3 次（含第一次）。`patrol_loops` 默认 1，走完退出；设成 0 就继续下一圈。
 - **Nav2 接口。** `NavAdapter` 发 `/navigate_to_pose`，处理句柄还没回来时的取消。
 - **停车。** 车只听 `/cmd_vel_safe`。失败或取消后锁存零速度，节点不退出。
 - **任务入口。** MQTT `sitl/patrol/task`，或话题 `/patrol_task`。状态写到 `/patrol_status`。
@@ -39,6 +41,13 @@ sudo apt install \
   ros-humble-rviz2
 ```
 
+`rosdep` 已经初始化过的话，也可以按 `package.xml` 装齐上面这些包：
+
+```bash
+source /opt/ros/humble/setup.bash
+rosdep install --from-paths src --ignore-src -y
+```
+
 脚本会自己设置 `TURTLEBOT3_MODEL=waffle`，并把 `GAZEBO_MODEL_PATH` 设成 Gazebo 官方模型加上 turtlebot3 模型。`GAZEBO_MODEL_DATABASE_URI` 置空，避免启动时去拉在线模型。
 
 MQTT 用本机 1883。装了 `mosquitto` 就用它。没装时 `scripts/mqtt_patrol.sh` 拉起仓库里的 `scripts/mqtt_broker.py`（MQTT 3.1.1，QoS 0，只监听 127.0.0.1，没有鉴权）。
@@ -53,7 +62,7 @@ colcon test --packages-select sitl_adapters sitl_mission_bt sitl_mission_node
 colcon test-result --verbose
 ```
 
-GTest 覆盖雷达新鲜度、Goal 取消槽、急停锁存、行为树超时重试、雷达失败取消、任务文本和 MQTT 往返。这些测试不开 Gazebo。推到 GitHub 之后，`.github/workflows/ci.yml` 会在 Humble 容器里做同样的编译和测试。
+GTest 覆盖雷达新鲜度、Goal 取消槽、急停锁存、行为树超时重试、雷达失败取消、成功后再走一圈、任务文本和 MQTT 往返。这些测试不开 Gazebo。推到 GitHub 之后，`.github/workflows/ci.yml` 会在 Humble 容器里做同样的编译和测试。
 
 ## 跑仿真
 
@@ -65,13 +74,21 @@ bash scripts/start.sh
 
 `auto_start` 默认为 true。`/bt_navigator` 进入 Active 且 `/navigate_to_pose` 可连之后，巡检自己开始。不要在 RViz 里点 Goal。AMCL 使用 `set_initial_pose`，不用再给 2D Pose Estimate。
 
+`patrol_loops` 默认为 1：三个点成功后 mission 进程自己退出。一直转用：
+
+```bash
+bash scripts/start.sh patrol_loops:=0
+```
+
+取消和雷达故障仍然停车，节点不退出。再发 `start` 从第一圈重计。中间圈的 `/patrol_status` 是 `lap <n>`，最后一圈才是 `succeeded`。
+
 取消：
 
 ```bash
 bash scripts/cancel.sh
 ```
 
-车应停下，`/mission_node` 还在。三个点都成功后，mission 进程自己退出。这条路径不经过 MQTT。
+车应停下，`/mission_node` 还在。这条路径不经过 MQTT。
 
 ## 用 MQTT 跑
 

@@ -2,7 +2,7 @@
 
 A handwritten ROS 2 Humble learning project: schedule an indoor patrol in simulation, and keep the application layer separate from the navigator.
 
-这是我手写来学 ROS 2 应用层的项目。导航和车体用现成的 Nav2 与 TurtleBot3，自己写的是任务怎么进来、怎么按点执行、失败了怎么停。不做规划，也不做视觉。
+这是我手写来学 ROS 2 应用层的项目。导航和车体用现成的 Nav2 与 TurtleBot3
 
 ## 目的
 

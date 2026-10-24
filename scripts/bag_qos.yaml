@@ -1,0 +1,31 @@
+# ros2 bag record 要和发布端 QoS 一致，否则 /scan 和 /patrol_status 会静默录不到。
+/patrol_status:
+  reliability: reliable
+  durability: transient_local
+  history: keep_last
+  depth: 1
+/cmd_vel:
+  reliability: reliable
+  durability: volatile
+  history: keep_last
+  depth: 20
+/cmd_vel_safe:
+  reliability: reliable
+  durability: volatile
+  history: keep_last
+  depth: 20
+/odom:
+  reliability: reliable
+  durability: volatile
+  history: keep_last
+  depth: 20
+/clock:
+  reliability: reliable
+  durability: volatile
+  history: keep_last
+  depth: 10
+/scan:
+  reliability: best_effort
+  durability: volatile
+  history: keep_last
+  depth: 5

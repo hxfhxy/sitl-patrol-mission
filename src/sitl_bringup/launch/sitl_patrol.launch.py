@@ -1,0 +1,79 @@
+import os
+from ament_index_python.packages import get_package_share_directory
+from launch import LaunchDescription
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
+from launch.launch_description_sources import PythonLaunchDescriptionSource
+from launch.substitutions import LaunchConfiguration
+from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
+
+
+def generate_launch_description():
+    nav2_bringup_dir = get_package_share_directory('nav2_bringup')
+    sitl_bringup_dir = get_package_share_directory('sitl_bringup')
+
+    nav2_params_yaml = os.path.join(sitl_bringup_dir, 'config', 'nav2_params.yaml')
+    waffle_model_sdf = os.path.join(sitl_bringup_dir, 'models', 'waffle.model')
+
+    tb3_sim_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            os.path.join(nav2_bringup_dir, 'launch', 'tb3_simulation_launch.py')
+        ),
+        launch_arguments={
+            'headless': 'False',
+            'use_sim_time': 'True',
+            'params_file': nav2_params_yaml,
+            'robot_sdf': waffle_model_sdf,
+        }.items()
+    )
+
+    scan_delay_node = Node(
+        package='sitl_mission_node',
+        executable='scan_delay_node',
+        name='scan_delay_node',
+        output='screen',
+        parameters=[{
+            'use_sim_time': True,
+            'delay_ms': 0,
+        }]
+    )
+
+    odom_tf_gate_node = Node(
+        package='sitl_mission_node',
+        executable='odom_tf_gate',
+        name='odom_tf_gate',
+        output='screen',
+        parameters=[{
+            'use_sim_time': True,
+            'stall': False,
+        }]
+    )
+
+    mission_node = Node(
+        package='sitl_mission_node',
+        executable='mission_node',
+        name='mission_node',
+        output='screen',
+        parameters=[{
+            'use_sim_time': True,
+            'auto_start': ParameterValue(LaunchConfiguration('auto_start'), value_type=bool),
+            'mqtt_enable': ParameterValue(LaunchConfiguration('mqtt_enable'), value_type=bool),
+            'mqtt_host': LaunchConfiguration('mqtt_host'),
+            'mqtt_port': ParameterValue(LaunchConfiguration('mqtt_port'), value_type=int),
+            'mqtt_topic': LaunchConfiguration('mqtt_topic'),
+            'mqtt_status_topic': LaunchConfiguration('mqtt_status_topic'),
+        }]
+    )
+
+    return LaunchDescription([
+        DeclareLaunchArgument('auto_start', default_value='true'),
+        DeclareLaunchArgument('mqtt_enable', default_value='false'),
+        DeclareLaunchArgument('mqtt_host', default_value='127.0.0.1'),
+        DeclareLaunchArgument('mqtt_port', default_value='1883'),
+        DeclareLaunchArgument('mqtt_topic', default_value='sitl/patrol/task'),
+        DeclareLaunchArgument('mqtt_status_topic', default_value='sitl/patrol/status'),
+        tb3_sim_launch,
+        scan_delay_node,
+        odom_tf_gate_node,
+        mission_node,
+    ])

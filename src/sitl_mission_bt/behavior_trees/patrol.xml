@@ -1,0 +1,19 @@
+<root main_tree_to_execute="MainTree">
+  <BehaviorTree ID="MainTree">
+    <!-- 每拍先看原始 /scan。失败会 halt 正在跑的 NavigateTo，整棵树 FAILURE，进入 FAULT。 -->
+    <ReactiveSequence name="patrol_with_scan">
+      <IsScanHealthy name="scan_health" max_age_sec="1.0"/>
+      <Sequence name="patrol_sequence">
+        <RetryUntilSuccessful num_attempts="3">
+          <NavigateTo name="wp_A" x="1.5" y="0.0" yaw="0.0" timeout_sec="60"/>
+        </RetryUntilSuccessful>
+        <RetryUntilSuccessful num_attempts="3">
+          <NavigateTo name="wp_B" x="1.5" y="1.5" yaw="1.57" timeout_sec="60"/>
+        </RetryUntilSuccessful>
+        <RetryUntilSuccessful num_attempts="3">
+          <NavigateTo name="wp_C" x="0.0" y="1.5" yaw="3.14" timeout_sec="60"/>
+        </RetryUntilSuccessful>
+      </Sequence>
+    </ReactiveSequence>
+  </BehaviorTree>
+</root>

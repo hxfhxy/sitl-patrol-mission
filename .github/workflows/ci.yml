@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  gtest:
+    runs-on: ubuntu-22.04
+    container:
+      image: ros:humble-ros-base
+    steps:
+      - name: Install git
+        run: apt-get update && apt-get install -y --no-install-recommends git ca-certificates
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install ROS dependencies
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            python3-colcon-common-extensions \
+            ros-humble-ament-cmake-gtest \
+            ros-humble-ament-index-cpp \
+            ros-humble-behaviortree-cpp-v3 \
+            ros-humble-geometry-msgs \
+            ros-humble-lifecycle-msgs \
+            ros-humble-nav2-msgs \
+            ros-humble-nav-msgs \
+            ros-humble-rclcpp-action \
+            ros-humble-sensor-msgs \
+            ros-humble-std-msgs \
+            ros-humble-tf2-ros
+
+      - name: Build and test
+        shell: bash
+        run: |
+          set -eo pipefail
+          source /opt/ros/humble/setup.bash
+          colcon build --packages-select sitl_adapters sitl_mission_bt sitl_mission_node sitl_bringup
+          source install/setup.bash
+          colcon test --packages-select sitl_adapters sitl_mission_bt sitl_mission_node --event-handlers console_direct+
+          colcon test-result --verbose

@@ -1,0 +1,19 @@
+build/
+install/
+log/
+.vscode/
+.idea/
+.DS_Store
+*.pyc
+__pycache__/
+*.user
+*.swp
+
+# 整桌录屏含编辑器，不进仓库。脚本仍会写到这个路径。
+docs/demo.mp4
+
+# bag 本体不进 git。仓库留 CSV、校验和和空目录。
+bags/*
+!bags/.gitkeep
+!bags/*.csv
+!bags/*.sha256

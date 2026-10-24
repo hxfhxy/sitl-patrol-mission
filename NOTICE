@@ -1,0 +1,21 @@
+sitl-patrol-mission
+Copyright 2026 hzy
+
+This project is licensed under the Apache License, Version 2.0.
+See the LICENSE file.
+
+Third-party material included in this repository:
+
+src/sitl_bringup/models/waffle.model
+  Derived from the TurtleBot3 Waffle SDF in ROBOTIS-GIT/turtlebot3_simulations
+  (package turtlebot3_gazebo), which is licensed under the Apache License 2.0.
+  Local changes: diff-drive command_topic is cmd_vel_safe, and publish_odom_tf
+  is false. Mesh URIs still point at the installed turtlebot3_common models.
+
+src/sitl_bringup/config/nav2_params.yaml
+  Derived from the TurtleBot3 Nav2 parameter file shipped with Nav2 bringup,
+  which is licensed under the Apache License 2.0. Local changes are described
+  in the comment at the top of that file.
+
+This repository does not vendor Nav2, Gazebo, or BehaviorTree.CPP.
+Those are used as system packages. BehaviorTree.CPP is MIT licensed.

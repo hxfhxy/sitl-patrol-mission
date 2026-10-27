@@ -5,6 +5,7 @@
 
 namespace sitl_adapters {
 
+// /cmd_vel 到 /cmd_vel_safe 的唯一发布者。锁存后丢掉 Nav2 的速度，改发零。
 class EStop {
 public:
   explicit EStop(rclcpp::Node * node = nullptr);
@@ -23,6 +24,7 @@ private:
   rclcpp::Node * node_{nullptr};
   rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr cmd_vel_pub_;
   rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr cmd_vel_sub_;
+  // 锁存期间按节点钟 50 ms 发零。/clock 10 Hz 时实际大约 100 ms 一拍。
   rclcpp::TimerBase::SharedPtr latch_timer_;
   bool latched_{false};
 };

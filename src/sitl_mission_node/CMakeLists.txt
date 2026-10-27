@@ -1,4 +1,5 @@
 cmake_minimum_required(VERSION 3.10)
+# 任务节点，以及三个不链进它的独立可执行文件：探针、雷达延迟、里程 TF 门。
 project(sitl_mission_node)
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")

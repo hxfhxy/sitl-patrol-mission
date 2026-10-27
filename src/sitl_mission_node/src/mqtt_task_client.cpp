@@ -21,12 +21,14 @@ namespace sitl_mission_node {
 
 namespace {
 
+// MQTT 多字节整数是大端。
 void append_u16(std::string & out, uint16_t value)
 {
   out.push_back(static_cast<char>((value >> 8) & 0xff));
   out.push_back(static_cast<char>(value & 0xff));
 }
 
+// 剩余长度：每字节低 7 位是数据，最高位表示后面还有字节。
 void append_remaining_length(std::string & out, size_t length)
 {
   do {
@@ -39,6 +41,7 @@ void append_remaining_length(std::string & out, size_t length)
   } while (length > 0);
 }
 
+// 0x30 是 PUBLISH、QoS 0、不保留。项目状态只发这一档。
 std::string encode_publish(const std::string & topic, const std::string & payload)
 {
   std::string body;
@@ -52,6 +55,7 @@ std::string encode_publish(const std::string & topic, const std::string & payloa
   return packet;
 }
 
+// 非阻塞套接字。写不满就 poll 可写，停机或对端关掉就失败。
 bool send_all(int fd, const std::string & bytes, const std::atomic<bool> & stop)
 {
   size_t sent = 0;
@@ -83,6 +87,7 @@ bool send_all(int fd, const std::string & bytes, const std::atomic<bool> & stop)
   return true;
 }
 
+// 缓冲里凑不齐一整包就返回 false，调用方继续 recv。凑齐后从缓冲头部拿掉。
 bool take_packet(std::string & buffer, std::string & packet)
 {
   if (buffer.size() < 2) {
@@ -109,6 +114,8 @@ bool take_packet(std::string & buffer, std::string & packet)
   return true;
 }
 
+// getaddrinfo 可能堵住这条 MQTT 线程，不会堵住 ROS 的 spin。
+// 非阻塞 connect，大约 2 s 内没连上就放弃，外层再重试。
 int connect_broker(
   const std::string & host,
   int port,
@@ -184,6 +191,7 @@ int connect_broker(
   return fd;
 }
 
+// 一次 TCP 会话。析构关 fd。断线后由 run() 再建一条。
 class BrokerConn
 {
 public:
@@ -213,6 +221,7 @@ public:
 
   bool flush_outgoing()
   {
+    // 发送失败时把还没发出去的放回队首，下一次会话再试。
     std::deque<std::string> local;
     {
       std::lock_guard<std::mutex> lock(outgoing_mutex_);
@@ -230,6 +239,7 @@ public:
     return true;
   }
 
+  // flush_status 为 false 时只读握手包，不把状态队列发出去。SUBACK 之前不能 PUBLISH。
   bool read_one(bool flush_status)
   {
     while (!take_packet(buffer_, packet_)) {
@@ -249,6 +259,7 @@ public:
         }
         return false;
       }
+      // wake pipe 有字节：ROS 线程刚塞了一条状态。
       if (count == 2 && (pfds[1].revents & POLLIN) != 0) {
         drain_wake();
         if (flush_status && !flush_outgoing()) {
@@ -260,6 +271,7 @@ public:
         return false;
       }
       if ((pfds[0].revents & POLLIN) == 0) {
+        // 保活 30 s。15 s 没收发就发 PINGREQ（0xC0 0x00），避免 broker 把空闲连接拆掉。
         if (std::chrono::steady_clock::now() - last_io_ > std::chrono::seconds(15)) {
           const std::string ping{static_cast<char>(0xc0), static_cast<char>(0x00)};
           if (!send_all(fd_, ping, stop_)) {
@@ -288,6 +300,7 @@ public:
 
   bool handle_publish(const MqttTaskClient::Handler & handler)
   {
+    // 高 4 位是包类型。3 是 PUBLISH，13 是 PINGRESP。别的控制包这里直接丢掉。
     last_io_ = std::chrono::steady_clock::now();
     const uint8_t header = static_cast<uint8_t>(packet_[0]);
     const uint8_t type = header >> 4;
@@ -308,6 +321,7 @@ public:
       (static_cast<uint8_t>(packet_[offset]) << 8) | static_cast<uint8_t>(packet_[offset + 1]));
     offset += 2 + topic_len;
     const uint8_t qos = (header >> 1) & 0x03;
+    // 本客户端只发 QoS 0。对方若发 QoS 1，回 PUBACK，否则 broker 会重发。
     if (qos > 0) {
       if (offset + 2 > packet_.size()) {
         return true;
@@ -323,6 +337,7 @@ public:
       return true;
     }
     const std::string payload = packet_.substr(offset);
+    // handler 只入队。阶段机在 ROS 线程的 poll() 里跑。
     if (handler && !payload.empty()) {
       handler(payload);
     }
@@ -410,6 +425,7 @@ void MqttTaskClient::start()
 
 void MqttTaskClient::publish_status(const std::string & payload)
 {
+  // 队列上限 16。巡检状态以最新的为准，旧的 lap / goal_sent 可以丢。
   {
     std::lock_guard<std::mutex> lock(outgoing_mutex_);
     outgoing_.push_back(payload);
@@ -433,6 +449,7 @@ void MqttTaskClient::wake()
 
 void MqttTaskClient::run()
 {
+  // 断线后 20 次 100 ms，停机时不用干等 2 秒。
   while (!stop_.load()) {
     if (!session_once() && !stop_.load()) {
       for (int i = 0; i < 20 && !stop_.load(); ++i) {
@@ -450,6 +467,8 @@ bool MqttTaskClient::session_once()
   }
   BrokerConn conn(fd, stop_, wake_fds_[0], outgoing_mutex_, outgoing_, status_topic_);
 
+  // CONNECT：协议名 MQTT，级别 4 是 3.1.1，0x02 是 clean session，保活 30 s。
+  // 客户端 id 固定。第二个 mission_node 连上时，broker 会踢掉前一个。
   std::string body;
   append_u16(body, 4);
   body += "MQTT";
@@ -471,6 +490,7 @@ bool MqttTaskClient::session_once()
     return false;
   }
 
+  // SUBSCRIBE，包 id 1，QoS 0。等 SUBACK（类型 9）之后才允许发状态。
   std::string sub_body;
   append_u16(sub_body, 1);
   append_u16(sub_body, static_cast<uint16_t>(topic_.size()));

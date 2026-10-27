@@ -1,4 +1,5 @@
 cmake_minimum_required(VERSION 3.10)
+# 导航、急停、雷达新鲜度。行为树和 MQTT 不放在这个库里。
 project(sitl_adapters)
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")

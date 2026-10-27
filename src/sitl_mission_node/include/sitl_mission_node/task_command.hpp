@@ -6,12 +6,14 @@
 
 namespace sitl_mission_node {
 
+// /patrol_task 和 MQTT 载荷共用这一份结果。
 enum class TaskCommand {
   Start,
   Cancel,
   Ignore
 };
 
+// 去掉首尾空白再转小写。isspace 的参数要是 unsigned char，char 可能是负的。
 inline std::string trim_lower_copy(std::string text)
 {
   auto not_space = [](unsigned char c) { return std::isspace(c) == 0; };

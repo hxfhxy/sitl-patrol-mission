@@ -6,9 +6,9 @@ namespace sitl_adapters {
 class GoalSlot {
 public:
   enum class CancelAction {
-    None,
-    Armed,
-    CancelHandle
+    None,          // 当前没有在飞的 Goal。
+    Armed,         // 句柄还没到，先记下，句柄一到就取消。
+    CancelHandle   // 句柄已经在，调用方现在就 async_cancel。
   };
 
   void begin_send()
@@ -44,9 +44,9 @@ public:
 
 private:
   enum class Phase {
-    Idle,
-    WaitingHandle,
-    Active
+    Idle,           // 没有在飞的 Goal。
+    WaitingHandle,  // async_send_goal 已返回，句柄还没到。
+    Active          // 句柄已接受。
   };
 
   Phase phase_{Phase::Idle};

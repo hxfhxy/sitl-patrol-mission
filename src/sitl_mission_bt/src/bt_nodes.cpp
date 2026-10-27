@@ -6,6 +6,7 @@ namespace sitl_mission_bt {
 
 namespace {
 
+// overwrite 为 false 时，已有原因留下。onHalted 的 canceled 不能盖掉雷达故障。
 void set_fault_reason(const BT::TreeNode & node, const std::string & reason, bool overwrite)
 {
   const auto blackboard = node.config().blackboard;
@@ -53,11 +54,13 @@ BT::NodeStatus NavigateTo::onStart()
   }
 
   double x = 0.0, y = 0.0, yaw = 0.0;
+  // 端口来自 XML 属性。缺 x/y/yaw 是树写错了，直接失败，不发 Goal。
   if (!getInput("x", x) || !getInput("y", y) || !getInput("yaw", yaw)) {
     RCLCPP_ERROR(rclcpp::get_logger("bt_nodes"), "[BT:%s] 缺少 x/y/yaw 端口输入！", name().c_str());
     return BT::NodeStatus::FAILURE;
   }
 
+  // 没写 timeout_sec 时用端口默认值 60。读失败也回到 60。
   if (!getInput("timeout_sec", timeout_sec_)) {
     timeout_sec_ = 60.0;
   }
@@ -65,6 +68,7 @@ BT::NodeStatus NavigateTo::onStart()
   const uint32_t gen = ++goal_gen_;
   goal_done_.store(false);
   start_time_ = nav_adapter_->now();
+  // 先解开急停再发 Goal。重试的新速度才不会被零速盖住。
   if (estop_) {
     estop_->release();
   }
@@ -77,6 +81,7 @@ BT::NodeStatus NavigateTo::onStart()
   nav_adapter_->send_goal(
     x, y, yaw,
     [this, gen](sitl_adapters::NavResult res) {
+      // 超时和 halt 都会把 goal_gen_ 往前推，旧回调到了也不能结束新的一次。
       if (gen != goal_gen_.load()) {
         // 丢弃上一轮被取消/超时的旧 Goal 异步回调
         return;
@@ -85,6 +90,7 @@ BT::NodeStatus NavigateTo::onStart()
       goal_done_.store(true);
     });
 
+  // 即使结果回调已经在 send_goal 里同步触发，这一拍也先返回 RUNNING，下一拍 onRunning 再收。
   return BT::NodeStatus::RUNNING;
 }
 
@@ -93,7 +99,7 @@ BT::NodeStatus NavigateTo::onRunning()
   if (!goal_done_.load()) {
     const double elapsed = (nav_adapter_->now() - start_time_).seconds();
     if (elapsed > timeout_sec_) {
-      // 超时：使当前 gen 失效，取消 Goal 并 halt，把这一次失败交给 RetryUntilSuccessful
+      // 先作废这一代，再取消。返回 FAILURE 后状态不再是 RUNNING，随后的 Retry halt 不会进 onHalted。
       ++goal_gen_;
       RCLCPP_WARN(
         rclcpp::get_logger("bt_nodes"),
@@ -110,6 +116,7 @@ BT::NodeStatus NavigateTo::onRunning()
   }
 
   const auto res = last_result_.load();
+  // 成功不写 fault_reason。这一圈里更早的 nav_timeout 由 mission_node 在整圈成功后清掉。
   if (res == sitl_adapters::NavResult::SUCCEEDED) {
     const double elapsed = (nav_adapter_->now() - start_time_).seconds();
     RCLCPP_INFO(
@@ -135,6 +142,7 @@ BT::NodeStatus NavigateTo::onRunning()
 
 void NavigateTo::onHalted()
 {
+  // 雷达失败和用户取消走这里。超时不走，因为那时已经不是 RUNNING。
   ++goal_gen_;
   RCLCPP_WARN(
     rclcpp::get_logger("bt_nodes"),
@@ -146,6 +154,7 @@ void NavigateTo::onHalted()
   if (estop_) {
     estop_->halt();
   }
+  // 不覆盖。黑板上已有 scan_* 或 nav_* 时，不要改写成 canceled。
   set_fault_reason(*this, "canceled", false);
 }
 
@@ -166,6 +175,7 @@ BT::NodeStatus IsScanHealthy::tick()
   getInput("max_age_sec", max_age_sec);
   const auto health = sensor_health_->status(max_age_sec);
   const bool healthy = health == sitl_adapters::ScanHealthStatus::Ok;
+  // 同一原因每拍都会 tick。字符串没变就不再打日志。
   if (!healthy) {
     const char * reason = scan_reason(health);
     std::string existing;
@@ -186,6 +196,7 @@ BT::NodeStatus IsScanHealthy::tick()
           "[BT:%s] /scan 超过 %.2f s 没有新到达", name().c_str(), max_age_sec);
       }
     }
+    // 先写原因再返回 FAILURE。随后 onHalted 的 canceled 不能盖掉它。
     set_fault_reason(*this, reason, true);
   } else if (!was_healthy_ && healthy) {
     RCLCPP_INFO(rclcpp::get_logger("bt_nodes"), "[BT:%s] /scan 恢复", name().c_str());
@@ -194,6 +205,7 @@ BT::NodeStatus IsScanHealthy::tick()
   return healthy ? BT::NodeStatus::SUCCESS : BT::NodeStatus::FAILURE;
 }
 
+// XML 标签名就是这里的字符串。三个点共用同一对适配器指针。
 void register_bt_nodes(
   BT::BehaviorTreeFactory & factory,
   sitl_adapters::NavAdapter * nav_adapter,

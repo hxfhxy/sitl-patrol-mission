@@ -1,10 +1,14 @@
 <root main_tree_to_execute="MainTree">
   <BehaviorTree ID="MainTree">
-    <!-- 每拍先看原始 /scan。失败会 halt 正在跑的 NavigateTo，整棵树 FAILURE，进入 FAULT。 -->
+    <!-- 每拍先看原始 /scan。失败会 halt 正在跑的 NavigateTo，整棵树 FAILURE，不进该点的重试。 -->
     <ReactiveSequence name="patrol_with_scan">
+      <!-- 订的是到达时刻，max_age_sec 只在已经收过帧之后生效。 -->
       <IsScanHealthy name="scan_health" max_age_sec="1.0"/>
+      <!-- 普通 Sequence 记住走到哪一个点。A 成功后下一拍不会重发 A。 -->
       <Sequence name="patrol_sequence">
+        <!-- num_attempts 含第一次。重试只包导航失败和超时。 -->
         <RetryUntilSuccessful num_attempts="3">
+          <!-- map 坐标，yaw 弧度。超时用节点钟。 -->
           <NavigateTo name="wp_A" x="1.5" y="0.0" yaw="0.0" timeout_sec="60"/>
         </RetryUntilSuccessful>
         <RetryUntilSuccessful num_attempts="3">

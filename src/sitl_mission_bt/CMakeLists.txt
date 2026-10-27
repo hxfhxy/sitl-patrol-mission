@@ -1,4 +1,5 @@
 cmake_minimum_required(VERSION 3.10)
+# 行为树节点。patrol.xml 安装到 share，运行时按包名查找。
 project(sitl_mission_bt)
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")

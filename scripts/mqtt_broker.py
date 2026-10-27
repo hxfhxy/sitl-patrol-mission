@@ -63,6 +63,7 @@ def send_all(conn, data):
 
 
 def fanout(sender, packet):
+    # 没有按主题过滤。本机学习用，所有已连接客户端都收到同一份 PUBLISH。
     with lock:
         targets = [client for client in clients if client is not sender]
     for client in targets:
@@ -105,6 +106,7 @@ def handle(conn):
 
 
 def serve(port):
+    # 只听回环，没有账号。不要暴露到局域网。
     server = socket.socket()
     server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     server.bind(("127.0.0.1", port))
@@ -118,6 +120,7 @@ def serve(port):
 
 
 def publish(port, topic, payload):
+    # 脚本自己当一次客户端：CONNECT、发一条 QoS 0、DISCONNECT。客户端 id 和 mission 不同。
     conn = socket.create_connection(("127.0.0.1", port), timeout=3)
     body = b"\x00\x04MQTT\x04\x02\x00\x1e\x00\x0asitl-script"
     send_all(conn, bytes([0x10]) + encode_remaining(len(body)) + body)

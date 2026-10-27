@@ -223,6 +223,7 @@ bool wait_until(const std::function<bool()> & ready)
   return false;
 }
 
+// 本地假 broker：状态能发出去，start 能从订阅回到 handler。
 TEST(MqttRoundtrip, StatusGoesOutAndCommandComesBack)
 {
   FakeBroker broker;

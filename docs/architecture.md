@@ -17,7 +17,7 @@
 MQTT sitl/patrol/task  或  /patrol_task
         │
         ▼
-   mission_node  ──tick──►  patrol.xml
+   mission_node  ── tick ──►  patrol.xml
         │                      │
         │                      ├─ IsScanHealthy  订 /scan（到达时刻）
         │                      └─ NavigateTo     ──► /navigate_to_pose

@@ -35,9 +35,11 @@ SensorHealth::SensorHealth(rclcpp::Node * node) : node_(node)
 
 ScanHealthStatus SensorHealth::status(double max_age_sec) const
 {
+  // 无节点是测试里的空壳，按还没数据处理。
   if (!node_) {
     return ScanHealthStatus::NoData;
   }
+  // 实验用参数关掉检查。这是 scan_disabled，不是雷达真的断了。
   if (!node_->get_parameter("scan_health_enabled").as_bool()) {
     return ScanHealthStatus::Disabled;
   }
@@ -56,10 +58,12 @@ ScanHealthStatus SensorHealth::status(double max_age_sec) const
   }
 
   const bool ever = ever_received_.load();
+  // 第一帧之前放宽到至少 5 s。收到过之后就按树上的 max_age_sec。
   const double limit = ever ? max_age_sec : std::max(max_age_sec, kStartupGraceSec);
   if (freshness_.healthy(now_ns, static_cast<int64_t>(limit * kNsPerSec))) {
     return ScanHealthStatus::Ok;
   }
+  // 收过帧再超时是断流；从没收到是还没有第一帧。
   return ever ? ScanHealthStatus::Stale : ScanHealthStatus::NoData;
 }
 

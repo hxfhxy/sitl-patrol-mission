@@ -9,6 +9,7 @@ from launch_ros.parameter_descriptions import ParameterValue
 
 
 def generate_launch_description():
+    # Nav2 自带的仿真 launch。车体模型和参数换成仓库里的两份。
     nav2_bringup_dir = get_package_share_directory('nav2_bringup')
     sitl_bringup_dir = get_package_share_directory('sitl_bringup')
 
@@ -20,6 +21,7 @@ def generate_launch_description():
             os.path.join(nav2_bringup_dir, 'launch', 'tb3_simulation_launch.py')
         ),
         launch_arguments={
+            # 要看 Gazebo 窗口。无头跑测试不走这个 launch。
             'headless': 'False',
             'use_sim_time': 'True',
             'params_file': nav2_params_yaml,
@@ -27,6 +29,7 @@ def generate_launch_description():
         }.items()
     )
 
+    # 默认不延迟。代价地图订 /scan_delayed，AMCL 仍订 /scan。
     scan_delay_node = Node(
         package='sitl_mission_node',
         executable='scan_delay_node',
@@ -38,6 +41,7 @@ def generate_launch_description():
         }]
     )
 
+    # Gazebo 自己的 odom TF 已关掉，由这个节点重发。stall 默认 false。
     odom_tf_gate_node = Node(
         package='sitl_mission_node',
         executable='odom_tf_gate',
@@ -49,6 +53,7 @@ def generate_launch_description():
         }]
     )
 
+    # ParameterValue 把 launch 参数收成节点参数的真实类型，避免都变成字符串。
     mission_node = Node(
         package='sitl_mission_node',
         executable='mission_node',

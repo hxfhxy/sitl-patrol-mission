@@ -25,6 +25,7 @@ public:
   }
 };
 
+// 没帧是 NoData，来一帧变 Ok，关掉参数是 Disabled，即使帧还新。
 TEST_F(SensorStatusTest, NoDataThenFreshThenDisabled)
 {
   auto node = std::make_shared<rclcpp::Node>("sensor_status_test");
@@ -42,6 +43,7 @@ TEST_F(SensorStatusTest, NoDataThenFreshThenDisabled)
   EXPECT_FALSE(health.is_healthy(1.0));
 }
 
+// 已经收过帧再断流时，mark_fresh 不能把时刻改成现在。
 TEST_F(SensorStatusTest, MarkFreshDoesNotHideARealGap)
 {
   auto node = std::make_shared<rclcpp::Node>(

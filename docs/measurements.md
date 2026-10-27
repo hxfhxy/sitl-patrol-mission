@@ -14,7 +14,7 @@ broker 是仓库里的 `scripts/mqtt_broker.py`，不是 Eclipse Mosquitto。
 | 单点 | A 20.10 s，B 8.00 s，C 8.70 s（节点钟，`Goal 端到端`） |
 | 里程计 | 起点 `(-2.00, -0.50)`；按 A、B、C 的顺序进入 0.25 m；终点 `(0.08, 1.70)`，离 C 0.21 m |
 | `/cmd_vel_safe` | 736 条，其中 730 条非零 |
-| `/clock` | 0 条。录包 QoS 是 reliable，Gazebo 发布的是 best effort |
+| `/clock` | 0 条。当时录包写成 reliable，Gazebo 发布的是 best effort。`scripts/bag_qos.yaml` 现已改成 best effort |
 
 `xy_goal_tolerance` 是 0.25 m，终点在容差内。
 

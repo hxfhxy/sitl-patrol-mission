@@ -14,12 +14,14 @@ public:
   OdomTfGate()
   : Node("odom_tf_gate")
   {
+    // stall 只停 TF。零速度不在这个节点发。
     declare_parameter<bool>("stall", false);
     tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
 
     sub_ = create_subscription<Odometry>(
       "/odom", rclcpp::QoS(10).reliable().durability_volatile(),
       [this](const Odometry::SharedPtr msg) {
+        // 回调只存最新一帧。发布在定时器里，两边都会碰 last_odom_。
         std::lock_guard<std::mutex> lock(mutex_);
         last_odom_ = msg;
       });
@@ -40,6 +42,7 @@ public:
 private:
   void on_timer()
   {
+    // 停发之后 Gazebo 按最后一条 Twist 滑行。这里不补零速度。
     if (get_parameter("stall").as_bool()) {
       return;
     }

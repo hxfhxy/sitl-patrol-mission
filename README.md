@@ -109,7 +109,7 @@ ros2 bag info bags/patrol_success
 ros2 bag play bags/patrol_success
 ```
 
-已录上的话题是 `/patrol_status`、`/cmd_vel`、`/cmd_vel_safe`、`/odom`、`/scan`。`/clock` 当时因 QoS 不一致是 0 条：Gazebo 用 best effort，录包配置写成了 reliable。
+已录上的话题是 `/patrol_status`、`/cmd_vel`、`/cmd_vel_safe`、`/odom`、`/scan`。那两份 bag 的 `/clock` 是 0 条：当时录包写成 reliable，Gazebo 用 best effort。`scripts/bag_qos.yaml` 里 `/clock` 现为 best effort，之后再录才有仿真时间。
 
 没有 broker 时，也可以直接发 ROS 话题：
 

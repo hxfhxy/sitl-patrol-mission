@@ -1,4 +1,5 @@
 cmake_minimum_required(VERSION 3.10)
+# 只有 launch、参数和模型，没有 C++。
 project(sitl_bringup)
 
 find_package(ament_cmake REQUIRED)

@@ -4,6 +4,7 @@
 
 namespace {
 
+// 不连 Action 服务器。ImmediateSuccess 在 send_goal 里同步回调成功。
 class FakeNav : public sitl_adapters::NavAdapter {
 public:
   enum class Mode { Hold, ImmediateSuccess };
@@ -40,6 +41,7 @@ public:
   int64_t now_ns{1'000'000'000};
 };
 
+// healthy 为 false 时整段检查当成 scan_disabled。
 class FakeHealth : public sitl_adapters::SensorHealth {
 public:
   FakeHealth() : SensorHealth(nullptr) {}
@@ -86,6 +88,7 @@ public:
   }
 };
 
+// 一拍 onStart 返回 RUNNING，下一拍 onRunning 收到同步成功。
 TEST_F(BtPatrolTest, SuccessCompletesOneGoal)
 {
   FakeNav nav;
@@ -105,6 +108,7 @@ TEST_F(BtPatrolTest, SuccessCompletesOneGoal)
   EXPECT_EQ(nav.cancels, 0);
 }
 
+// SUCCESS 之后再 tick 会重新 onStart。不能因为 halt 把已完成的点取消掉。
 TEST_F(BtPatrolTest, SuccessStartsTheNextLapWithoutCancel)
 {
   FakeNav nav;
@@ -130,6 +134,7 @@ TEST_F(BtPatrolTest, SuccessStartsTheNextLapWithoutCancel)
   EXPECT_EQ(nav.cancels, 0);
 }
 
+// 和 patrol.xml 一样：ReactiveSequence 里套 Sequence。第二圈必须从 A 再发，再到 B。
 TEST_F(BtPatrolTest, SequenceRestartsFromTheFirstPoint)
 {
   const char * xml = R"(
@@ -172,6 +177,7 @@ TEST_F(BtPatrolTest, SequenceRestartsFromTheFirstPoint)
   EXPECT_EQ(nav.cancels, 0);
 }
 
+// 时钟往前跳触发超时。num_attempts=3，三次都失败后整棵树 FAILURE。
 TEST_F(BtPatrolTest, TimeoutRetriesThenFails)
 {
   FakeNav nav;
@@ -190,6 +196,7 @@ TEST_F(BtPatrolTest, TimeoutRetriesThenFails)
   EXPECT_GE(nav.cancels, 3);
 }
 
+// 超时把 gen 往前推之后，上一轮的 SUCCEEDED 回调不能结束新的一次。
 TEST_F(BtPatrolTest, StaleResultDoesNotFinishTheNextAttempt)
 {
   FakeNav nav;
@@ -207,6 +214,7 @@ TEST_F(BtPatrolTest, StaleResultDoesNotFinishTheNextAttempt)
   EXPECT_EQ(nav.sends, 2);
 }
 
+// 雷达失败在 Retry 外面：halt 正在跑的点，原因是 scan_disabled，再 tick 仍是同一原因。
 TEST_F(BtPatrolTest, ScanLossFaultsAndCancels)
 {
   FakeNav nav;

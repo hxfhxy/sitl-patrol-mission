@@ -18,6 +18,7 @@ public:
     declare_parameter<std::string>("input_topic", "/scan");
     declare_parameter<std::string>("output_topic", "/scan_delayed");
 
+    // 默认 0：原样转发。实验时再把 delay_ms 调大，不要和 odom stall 同一次跑。
     delay_ms_ = get_parameter("delay_ms").as_int();
     const std::string input_topic = get_parameter("input_topic").as_string();
     const std::string output_topic = get_parameter("output_topic").as_string();
@@ -26,6 +27,7 @@ public:
     sub_ = create_subscription<LaserScan>(
       input_topic, rclcpp::SensorDataQoS(),
       [this](const LaserScan::SharedPtr msg) {
+        // 按到达时刻推迟，消息本体原样入队，不改 stamp。
         const rclcpp::Time release_time =
           get_clock()->now() + rclcpp::Duration::from_seconds(delay_ms_ / 1000.0);
         queue_.emplace_back(release_time, *msg);
@@ -45,6 +47,7 @@ public:
 private:
   void on_timer()
   {
+    // 节点钟到了释放时刻才发。仿真暂停时队列停住，不会按墙钟提前放出去。
     const rclcpp::Time now = get_clock()->now();
     while (!queue_.empty() && now >= queue_.front().first) {
       pub_->publish(queue_.front().second);

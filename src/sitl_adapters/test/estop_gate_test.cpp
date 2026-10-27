@@ -27,6 +27,7 @@ public:
   }
 };
 
+// 锁存后 /cmd_vel 不再转发；release 之后新的速度又能到 /cmd_vel_safe。
 TEST_F(EStopGateTest, LatchDropsNavAndReleaseForwardsAgain)
 {
   auto node = std::make_shared<rclcpp::Node>("estop_gate_test");

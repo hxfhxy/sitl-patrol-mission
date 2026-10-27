@@ -90,6 +90,7 @@ publish_start() {
 }
 
 wait_status() {
+  # 在 echo 落盘的文件里等某一行状态。超时把已经收到的文本打出来。
   local want="$1"
   local limit="$2"
   local deadline=$((SECONDS + limit))
@@ -121,6 +122,7 @@ record_one() {
 
   local ready=0
   for _ in $(seq 1 60); do
+    # 必须从行首匹配。inactive 的文本里也有 active 这个子串。
     if ros2 lifecycle get /bt_navigator 2>/dev/null | grep -q "^active"; then
       ready=1
       break

@@ -34,15 +34,15 @@ private:
 
   std::string host_;
   int port_;
-  std::string topic_;
-  std::string status_topic_;
-  Handler handler_;
+  std::string topic_;          // 订阅：任务命令。
+  std::string status_topic_;   // 发布：和 /patrol_status 同一段文本。
+  Handler handler_;            // 只许入队，不许在 MQTT 线程里改阶段。
   Logger logger_;
   std::atomic<bool> stop_{false};
   std::thread thread_;
   std::mutex outgoing_mutex_;
-  std::deque<std::string> outgoing_;
-  int wake_fds_[2]{-1, -1};
+  std::deque<std::string> outgoing_;  // 最多 16 条，满了丢最旧的。
+  int wake_fds_[2]{-1, -1};           // pipe。写一端把读循环从 poll 里叫醒。
 };
 
 }  // namespace sitl_mission_node

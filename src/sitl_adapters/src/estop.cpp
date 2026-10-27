@@ -10,11 +10,13 @@ EStop::EStop(rclcpp::Node * node)
   if (!node_) {
     return;
   }
+  // 和 Nav2 的速度输出同一套 QoS，否则订阅对不上。
   const auto qos = rclcpp::QoS(10).reliable().durability_volatile();
   cmd_vel_pub_ = node_->create_publisher<geometry_msgs::msg::Twist>("/cmd_vel_safe", qos);
   cmd_vel_sub_ = node_->create_subscription<geometry_msgs::msg::Twist>(
     "/cmd_vel", qos,
     [this](const geometry_msgs::msg::Twist::SharedPtr msg) {
+      // 锁存后 Nav2 还在发速度，这里丢掉，车只看见定时器的零。
       if (latched_ || !cmd_vel_pub_) {
         return;
       }
@@ -33,11 +35,13 @@ void EStop::halt()
   }
   latched_ = true;
   publish_zero();
+  // Gazebo 保持最后一条 Twist。只发一次零，车还会按锁存前的速度滑。
   ensure_latch_timer();
 }
 
 void EStop::ensure_latch_timer()
 {
+  // 重复 halt 只打一次日志，定时器也不重建。
   if (latch_timer_) {
     return;
   }
@@ -59,6 +63,7 @@ void EStop::publish_zero()
 
 void EStop::release()
 {
+  // 下一轮 onStart 在发 Goal 之前调用。不解开的话，重试的速度会被零盖住。
   latched_ = false;
   if (latch_timer_) {
     latch_timer_->cancel();

@@ -5,6 +5,8 @@
 #include "geometry_msgs/msg/twist.hpp"
 #include "rclcpp/rclcpp.hpp"
 
+// 量 /cmd_vel 回调间隔，不是 /cmd_vel_safe，也不是 Twist 自带的时间戳（Twist 没有 header）。
+// 不在默认 launch 里。析构时把间隔写到 /tmp/cmd_vel_jitter.csv。
 class CmdVelProbe : public rclcpp::Node
 {
 public:
@@ -14,6 +16,7 @@ public:
     sub_ = create_subscription<geometry_msgs::msg::Twist>(
       "/cmd_vel", rclcpp::QoS(10).reliable().durability_volatile(),
       [this](const geometry_msgs::msg::Twist::SharedPtr) {
+        // 记的是回调到达时的节点钟。use_sim_time 时会被 /clock 量化成 0 或约 100 ms。
         stamps_ns_.push_back(get_clock()->now().nanoseconds());
       });
 
@@ -44,6 +47,7 @@ private:
     size_t zero_count = 0;
     for (size_t i = 1; i < stamps_ns_.size(); ++i) {
       const double dt = static_cast<double>(stamps_ns_[i] - stamps_ns_[i - 1]) / 1e6;
+      // 仿真钟 10 Hz、控制 20 Hz 时，相邻两条可能落在同一个 /clock 拍上，间隔就是 0。
       if (dt == 0.0) {
         ++zero_count;
       }

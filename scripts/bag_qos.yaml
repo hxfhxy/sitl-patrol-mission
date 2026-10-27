@@ -19,8 +19,9 @@
   durability: volatile
   history: keep_last
   depth: 20
+# Gazebo 的 /clock 是 ClockQoS：best effort。写成 reliable 会一条都录不到。
 /clock:
-  reliability: reliable
+  reliability: best_effort
   durability: volatile
   history: keep_last
   depth: 10

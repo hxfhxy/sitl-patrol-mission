@@ -51,6 +51,7 @@ public:
 private:
   rclcpp::Node * node_{nullptr};
   ScanFreshness freshness_;
+  // 收到过真实帧之后，断流就是 Stale，不再享受 5 s 启动宽限。
   mutable std::atomic<bool> ever_received_{false};
   rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr scan_sub_;
 };

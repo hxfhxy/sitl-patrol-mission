@@ -16,6 +16,7 @@ MissionNode::MissionNode() : Node("mission_node")
 {
   auto_start_ = declare_parameter<bool>("auto_start", true);
   patrol_loops_ = declare_parameter<int>("patrol_loops", 1);
+  // 负数不当成「一直转」。一直转只用 0。
   if (patrol_loops_ < 0) {
     RCLCPP_WARN(get_logger(), "patrol_loops=%d 无效，改用 1。", patrol_loops_);
     patrol_loops_ = 1;
@@ -29,6 +30,7 @@ MissionNode::MissionNode() : Node("mission_node")
   const std::string lifecycle_node =
     declare_parameter<std::string>("nav_lifecycle_node", "bt_navigator");
 
+  // 先建适配器再加载树。树节点只保存这些指针。
   nav_adapter_ = std::make_unique<sitl_adapters::NavAdapter>(this);
   estop_ = std::make_unique<sitl_adapters::EStop>(this);
   sensor_health_ = std::make_unique<sitl_adapters::SensorHealth>(this);
@@ -42,17 +44,20 @@ MissionNode::MissionNode() : Node("mission_node")
   tree_ = factory.createTreeFromFile(bt_xml_path);
   RCLCPP_INFO(get_logger(), "已加载行为树: %s", bt_xml_path.c_str());
 
+  // 三条入口最后都进 enqueue / request_cancel，阶段只在本线程改。
   cancel_sub_ = create_subscription<std_msgs::msg::Empty>(
     "/cancel_patrol", 10,
     [this](const std_msgs::msg::Empty::SharedPtr) { request_cancel(); });
   task_sub_ = create_subscription<std_msgs::msg::String>(
     "/patrol_task", 10,
     [this](const std_msgs::msg::String::SharedPtr msg) { enqueue_command(msg->data); });
+  // 深度 1 + transient_local：晚加入的订阅者拿到的是最新状态，不是历史。
   status_pub_ = create_publisher<std_msgs::msg::String>(
     "/patrol_status", rclcpp::QoS(rclcpp::KeepLast(1)).reliable().transient_local());
 
   lifecycle_client_ = create_client<lifecycle_msgs::srv::GetState>(lifecycle_node + "/get_state");
 
+  // 墙钟，不跟仿真暂停。Nav2 还没发布 /clock 时也能把 60 s 等超时。
   poll_timer_ = create_wall_timer(
     std::chrono::milliseconds(200), [this]() { poll(); });
 
@@ -84,6 +89,7 @@ MissionNode::MissionNode() : Node("mission_node")
 
 MissionNode::~MissionNode()
 {
+  // 先停回调，再 join MQTT 线程。线程退出前不能再碰已经拆掉的发布器。
   if (poll_timer_) {
     poll_timer_->cancel();
   }
@@ -95,12 +101,14 @@ MissionNode::~MissionNode()
 
 void MissionNode::enqueue_command(const std::string & payload)
 {
+  // MQTT 线程和 spin 都会碰到这个队列，所以只在这里加锁。
   std::lock_guard<std::mutex> lock(command_mutex_);
   commands_.push_back(payload);
 }
 
 void MissionNode::drain_commands()
 {
+  // swap 之后锁就放开，解析和 request_start 不再占着 mutex。
   std::deque<std::string> local;
   {
     std::lock_guard<std::mutex> lock(command_mutex_);
@@ -123,6 +131,7 @@ void MissionNode::drain_commands()
 
 void MissionNode::request_start(bool external)
 {
+  // Running / Arming / Done 上的 start 丢掉，避免两套 tick 叠在一起。
   if (phase_ != Phase::WaitTask && phase_ != Phase::Fault && phase_ != Phase::Canceled) {
     RCLCPP_WARN(get_logger(), "已有任务在执行或正在等待 Nav2，忽略新的 start。");
     return;
@@ -131,6 +140,7 @@ void MissionNode::request_start(bool external)
     bt_timer_->cancel();
   }
   tree_.haltTree();
+  // 上一轮失败留在黑板上的原因不能带到新任务。
   if (const auto blackboard = tree_.rootBlackboard()) {
     blackboard->set("fault_reason", std::string());
   }
@@ -138,6 +148,7 @@ void MissionNode::request_start(bool external)
   external_task_ = external;
   goal_metric_logged_ = false;
   laps_finished_ = 0;
+  // 指标一的起点是外部命令到达，不是 auto_start 构造的那一下。
   if (external) {
     task_arrival_ = now();
   }
@@ -152,12 +163,14 @@ void MissionNode::request_start(bool external)
 
 void MissionNode::request_cancel()
 {
+  // 还没发 Goal。停在 Canceled，不 shutdown，零速度定时器才有进程可挂。
   if (phase_ == Phase::Arming) {
     phase_ = Phase::Canceled;
     RCLCPP_WARN(get_logger(), "Nav2 尚未开始巡检，取消这次任务。节点保持存活。");
     publish_status("canceled");
     return;
   }
+  // WaitTask / Fault / Canceled / Done 没有正在走的点。
   if (phase_ != Phase::Running) {
     RCLCPP_WARN(get_logger(), "当前没有正在执行的巡检，忽略取消。");
     return;
@@ -176,6 +189,7 @@ bool MissionNode::nav_is_active()
   if (!lifecycle_client_->service_is_ready()) {
     return false;
   }
+  // 一拍只发一次请求。结果没回来就等下一拍，不在回调里再 spin。
   if (!lifecycle_future_) {
     lifecycle_future_ = lifecycle_client_->async_send_request(
       std::make_shared<lifecycle_msgs::srv::GetState::Request>());
@@ -186,6 +200,7 @@ bool MissionNode::nav_is_active()
   }
   const auto response = lifecycle_future_->get();
   lifecycle_future_.reset();
+  // 用状态 id，不用文本。lifecycle 的 "inactive" 里含有子串 "active"。
   return response &&
          response->current_state.id == lifecycle_msgs::msg::State::PRIMARY_STATE_ACTIVE;
 }
@@ -193,9 +208,11 @@ bool MissionNode::nav_is_active()
 void MissionNode::poll()
 {
   drain_commands();
+  // 命令每拍都收。等 Nav2 只发生在 Arming。
   if (phase_ != Phase::Arming) {
     return;
   }
+  // 墙钟。仿真时间停着时，这里仍然能放弃这次任务。
   if (std::chrono::steady_clock::now() > arm_deadline_) {
     RCLCPP_ERROR(get_logger(), "60 s 内 Nav2 没有进入 Active，放弃这次任务。");
     phase_ = Phase::Fault;
@@ -209,6 +226,7 @@ void MissionNode::poll()
   if (!nav_is_active()) {
     return;
   }
+  // 超时 0：这一拍只问一句，服务器还没好就下个 200 ms 再问。
   if (!nav_adapter_->wait_for_server(std::chrono::seconds(0))) {
     return;
   }
@@ -222,6 +240,7 @@ void MissionNode::begin_ticking()
   phase_ = Phase::Running;
   RCLCPP_INFO(get_logger(), "Nav2 已 Active，开始 10 Hz tick 巡检树。");
   publish_status("running");
+  // get_clock() 是节点钟。仿真时 100 ms 被 /clock 量化，不是笔记本上的 100 ms。
   bt_timer_ = rclcpp::create_timer(
     this, get_clock(), rclcpp::Duration::from_nanoseconds(100LL * 1000LL * 1000LL),
     [this]() { tick_tree(); });
@@ -229,12 +248,14 @@ void MissionNode::begin_ticking()
 
 void MissionNode::tick_tree()
 {
+  // 取消已经把阶段改掉时，这一拍即使定时器还没停也直接返回。
   if (phase_ != Phase::Running) {
     return;
   }
   const BT::NodeStatus status = tree_.tickRoot();
   if (status == BT::NodeStatus::SUCCESS) {
     laps_finished_ += 1;
+    // 这一圈里重试写过的 nav_timeout 不能留到下一圈的故障报告。
     if (const auto blackboard = tree_.rootBlackboard()) {
       blackboard->set("fault_reason", std::string());
     }
@@ -253,11 +274,13 @@ void MissionNode::tick_tree()
       RCLCPP_INFO(get_logger(), "第 %d 圈完成，巡检结束。", laps_finished_);
     }
     publish_status("succeeded");
+    // 给 transient_local 订阅者一拍时间拿走 succeeded，再拆进程。
     rclcpp::sleep_for(std::chrono::milliseconds(100));
     rclcpp::shutdown();
   } else if (status == BT::NodeStatus::FAILURE) {
     phase_ = Phase::Fault;
     bt_timer_->cancel();
+    // 树失败不一定走过 onHalted（例如三次超时用尽）。这里再锁一次，halt 本身可重复调用。
     estop_->halt();
     std::string reason = "unknown";
     if (const auto blackboard = tree_.rootBlackboard()) {
@@ -276,6 +299,7 @@ void MissionNode::tick_tree()
 
 void MissionNode::note_goal_sent()
 {
+  // 只记这次任务的第一个被接受的 Goal。下一圈、被拒绝的句柄都不进这里。
   if (!external_task_ || goal_metric_logged_) {
     return;
   }
@@ -291,6 +315,7 @@ void MissionNode::note_goal_sent()
 
 void MissionNode::publish_status(const std::string & text)
 {
+  // ROS 和 MQTT 用同一段字符串，避免两边各写一套状态字。
   std_msgs::msg::String msg;
   msg.data = text;
   if (status_pub_) {
@@ -304,6 +329,7 @@ void MissionNode::publish_status(const std::string & text)
 
 }  // namespace sitl_mission_node
 
+// 单线程 spin。多线程 executor 会让 send_seq_、句柄和 latched_ 竞争。
 int main(int argc, char * argv[])
 {
   rclcpp::init(argc, argv);
